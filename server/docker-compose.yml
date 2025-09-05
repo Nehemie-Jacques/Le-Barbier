@@ -1,0 +1,17 @@
+version: "3.9"
+services:
+  db:
+    image: mysql:8.0
+    container_name: beauty_mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: barbierdb
+      MYSQL_USER: barbierdb
+      MYSQL_PASSWORD: beauty
+    ports:
+      - "3000:3000"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    command: --default-authentication-plugin=mysql_native_password
+volumes:
+  mysql_data:

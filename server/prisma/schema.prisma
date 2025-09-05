@@ -1,0 +1,357 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  STAFF
+  CUSTOMER
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  FAILED
+  SHIPPED
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  INITIATED
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+enum PaymentProvider {
+  ORANGE_MONEY
+  MTN_MOMO
+  CARD
+}
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum LoyaltyTxnType {
+  EARN
+  REDEEM
+  ADJUST
+}
+
+enum MovementType {
+  IN
+  OUT
+}
+
+enum NotificationChannel {
+  EMAIL
+  SMS
+  IN_APP
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  READ
+  FAILED
+}
+
+model User {
+  id             String            @id @default(cuid())
+  email          String            @unique
+  phone          String?           @unique
+  passwordHash   String
+  firstName      String
+  lastName       String
+  role           Role              @default(CUSTOMER)
+  isActive       Boolean           @default(true)
+  lastLoginAt    DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  addresses      Address[]
+  cart           Cart?
+  orders         Order[]
+  appointments   Appointment[]     @relation("UserAppointments")
+  loyaltyAccount LoyaltyAccount?
+  notifications  Notification[]
+  refreshTokens  RefreshToken[]
+  chatSessions   ChatSession[]
+  staffProfile   StaffProfile?
+  auditLogs      AuditLog[]
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model Address {
+  id        String  @id @default(cuid())
+  userId    String
+  user      User    @relation(fields: [userId], references: [id])
+  line1     String
+  line2     String?
+  city      String
+  country   String
+  postal    String?
+  isDefault Boolean @default(false)
+}
+
+model Category {
+  id          String     @id @default(cuid())
+  name        String
+  slug        String     @unique
+  description String?
+  parentId    String?
+  parent      Category?  @relation("CategoryToChildren", fields: [parentId], references: [id])
+  children    Category[] @relation("CategoryToChildren")
+  products    Product[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Product {
+  id          String           @id @default(cuid())
+  name        String
+  slug        String           @unique
+  description String?
+  active      Boolean          @default(true)
+  categoryId  String?
+  category    Category?        @relation(fields: [categoryId], references: [id])
+  images      ProductImage[]
+  variants    ProductVariant[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ProductImage {
+  id        String  @id @default(cuid())
+  url       String
+  alt       String?
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  position  Int     @default(0)
+}
+
+model ProductVariant {
+  id                  String             @id @default(cuid())
+  productId           String
+  product             Product            @relation(fields: [productId], references: [id])
+  sku                 String             @unique
+  price               Decimal            @db.Decimal(10, 2)
+  currency            String             @default("XAF")
+  stockQuantity       Int                @default(0)
+  attributes          Json?
+  isActive            Boolean            @default(true)
+  orderItems          OrderItem[]
+  cartItems           CartItem[]
+  inventoryMovements  InventoryMovement[]
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model InventoryMovement {
+  id               String         @id @default(cuid())
+  productVariantId String
+  productVariant   ProductVariant @relation(fields: [productVariantId], references: [id])
+  type             MovementType
+  quantity         Int
+  reason           String?
+  createdById      String?
+  createdAt        DateTime @default(now())
+}
+
+model Cart {
+  id        String     @id @default(cuid())
+  userId    String     @unique
+  user      User       @relation(fields: [userId], references: [id])
+  items     CartItem[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+
+model CartItem {
+  id               String         @id @default(cuid())
+  cartId           String
+  cart             Cart           @relation(fields: [cartId], references: [id])
+  productVariantId String
+  productVariant   ProductVariant @relation(fields: [productVariantId], references: [id])
+  quantity         Int
+  unitPrice        Decimal        @db.Decimal(10, 2)
+  currency         String         @default("XAF")
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@unique([cartId, productVariantId])
+}
+
+model Order {
+  id         String        @id @default(cuid())
+  userId     String
+  user       User          @relation(fields: [userId], references: [id])
+  status     OrderStatus   @default(PENDING)
+  total      Decimal       @db.Decimal(10, 2)
+  currency   String        @default("XAF")
+  items      OrderItem[]
+  payment    Payment?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+}
+
+model OrderItem {
+  id               String         @id @default(cuid())
+  orderId          String
+  order            Order          @relation(fields: [orderId], references: [id])
+  productVariantId String
+  productVariant   ProductVariant @relation(fields: [productVariantId], references: [id])
+  nameSnapshot     String
+  skuSnapshot      String
+  unitPrice        Decimal        @db.Decimal(10, 2)
+  quantity         Int
+}
+
+model Payment {
+  id          String          @id @default(cuid())
+  orderId     String          @unique
+  order       Order           @relation(fields: [orderId], references: [id])
+  provider    PaymentProvider
+  status      PaymentStatus   @default(INITIATED)
+  amount      Decimal         @db.Decimal(10, 2)
+  currency    String          @default("XAF")
+  reference   String?         @unique
+  externalId  String?         @unique
+  rawPayload  Json?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+}
+
+model Service {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  durationMin Int
+  price       Decimal   @db.Decimal(10, 2)
+  currency    String    @default("XAF")
+  active      Boolean   @default(true)
+  appointments Appointment[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model StaffProfile {
+  id          String          @id @default(cuid())
+  userId      String          @unique
+  user        User            @relation(fields: [userId], references: [id])
+  specialty   String?
+  bio         String?
+  schedules   StaffSchedule[]
+  appointments Appointment[]  @relation("StaffAppointments")
+}
+
+model StaffSchedule {
+  id        String       @id @default(cuid())
+  staffId   String
+  staff     StaffProfile @relation(fields: [staffId], references: [id])
+  dayOfWeek Int          // 0=Dimanche..6=Samedi
+  startTime String       // "09:00"
+  endTime   String       // "17:00"
+}
+
+model Appointment {
+  id        String            @id @default(cuid())
+  userId    String
+  user      User              @relation("UserAppointments", fields: [userId], references: [id])
+  serviceId String
+  service   Service           @relation(fields: [serviceId], references: [id])
+  staffId   String?
+  staff     StaffProfile?     @relation("StaffAppointments", fields: [staffId], references: [id])
+  startAt   DateTime
+  endAt     DateTime
+  status    AppointmentStatus @default(PENDING)
+  notes     String?
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+}
+
+model LoyaltyAccount {
+  id        String               @id @default(cuid())
+  userId    String               @unique
+  user      User                 @relation(fields: [userId], references: [id])
+  points    Int                  @default(0)
+  txns      LoyaltyTransaction[]
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+}
+
+model LoyaltyTransaction {
+  id          String        @id @default(cuid())
+  accountId   String
+  account     LoyaltyAccount @relation(fields: [accountId], references: [id])
+  type        LoyaltyTxnType
+  points      Int
+  description String?
+  relatedOrderId String?
+  createdAt   DateTime      @default(now())
+}
+
+model Notification {
+  id        String             @id @default(cuid())
+  userId    String?
+  user      User?              @relation(fields: [userId], references: [id])
+  channel   NotificationChannel
+  status    NotificationStatus @default(PENDING)
+  title     String
+  message   String
+  meta      Json?
+  createdAt DateTime           @default(now())
+}
+
+model ChatSession {
+  id        String        @id @default(cuid())
+  userId    String?
+  user      User?         @relation(fields: [userId], references: [id])
+  messages  ChatMessage[]
+  createdAt DateTime      @default(now())
+}
+
+model ChatMessage {
+  id         String      @id @default(cuid())
+  sessionId  String
+  session    ChatSession @relation(fields: [sessionId], references: [id])
+  role       String      // "user" | "assistant" | "system"
+  content    String
+  metadata   Json?
+  createdAt  DateTime    @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String
+  entity    String?
+  entityId  String?
+  details   Json?
+  createdAt DateTime  @default(now())
+}
